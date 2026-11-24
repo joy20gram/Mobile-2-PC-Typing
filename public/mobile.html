@@ -44,6 +44,7 @@
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition;
     let listening = false;
+    let recognitionError = "";
 
     if (SpeechRecognition) {
       recognition = new SpeechRecognition();
@@ -58,12 +59,22 @@
       recognition.onend = () => {
         listening = false;
         listenButton.textContent = "🎙 Start speaking";
-        status.textContent = "Stopped listening";
+        if (!recognitionError) status.textContent = "Stopped listening";
       };
       recognition.onerror = (event) => {
-        status.textContent = `Voice error: ${event.error}`;
+        const messages = {
+          "not-allowed": "Microphone blocked. Allow microphone access for this browser in phone settings, then reload.",
+          "service-not-allowed": "Speech service is blocked. Check phone settings and internet, then try Chrome.",
+          "audio-capture": "No microphone found. Check your phone microphone.",
+          "network": "Speech service needs internet. Check your connection and try again.",
+          "no-speech": "No speech heard. Tap Start speaking and try again.",
+          "language-not-supported": "This speech language is not supported on your phone. Try English."
+        };
+        recognitionError = messages[event.error] || `Voice recognition error: ${event.error}`;
+        status.textContent = recognitionError;
       };
       recognition.onresult = (event) => {
+        recognitionError = "";
         let result = "";
         for (let i = 0; i < event.results.length; i++) {
           result += event.results[i][0].transcript;
@@ -72,8 +83,7 @@
         sendText(false);
       };
     } else {
-      listenButton.disabled = true;
-      status.textContent = "Use Chrome or Edge for voice typing";
+      status.textContent = "Voice recognition is unavailable here. Use your phone keyboard's microphone.";
     }
 
     function connect() {
@@ -105,10 +115,22 @@
         status.textContent = "Enter the PC room code first";
         return;
       }
+      if (!recognition) {
+        textInput.focus();
+        status.textContent = "Tap the microphone on your phone keyboard to dictate, then tap Send.";
+        return;
+      }
       connect();
       recognition.lang = languageInput.value;
-      if (listening) recognition.stop();
-      else recognition.start();
+      recognitionError = "";
+      try {
+        if (listening) recognition.stop();
+        else recognition.start();
+      } catch (error) {
+        status.textContent = error.name === "NotAllowedError"
+          ? "Microphone blocked. Allow microphone access for this browser, then reload."
+          : `Could not start voice recognition: ${error.message}`;
+      }
     });
 
     document.querySelector("#send").addEventListener("click", () => sendText(true));
