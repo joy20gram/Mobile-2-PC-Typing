@@ -167,6 +167,7 @@ async function main() {
     keyboard.stdin.end();
     terminal.close();
     keyboard.kill();
+    setImmediate(() => process.exit(0));
   }
 
   terminal.on("close", shutdown);
