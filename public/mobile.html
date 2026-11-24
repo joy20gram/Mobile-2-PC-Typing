@@ -63,7 +63,9 @@
       };
       recognition.onerror = (event) => {
         const messages = {
-          "not-allowed": "Microphone blocked. Allow microphone access for this browser in phone settings, then reload.",
+          "not-allowed": window.isSecureContext
+            ? "Microphone blocked. Allow microphone access for this site in Chrome settings, then reload."
+            : "Chrome blocks this page's microphone on a local HTTP link. Use your keyboard microphone in the text box, then tap Send. The built-in mic needs HTTPS.",
           "service-not-allowed": "Speech service is blocked. Check phone settings and internet, then try Chrome.",
           "audio-capture": "No microphone found. Check your phone microphone.",
           "network": "Speech service needs internet. Check your connection and try again.",
