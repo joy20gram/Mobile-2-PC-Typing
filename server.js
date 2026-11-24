@@ -9,40 +9,42 @@ const io = new Server(httpServer);
 
 app.use(express.static(path.join(__dirname, "public")));
 
+app.get("/health", (_request, response) => {
+  response.status(200).send("ok");
+});
+
+function normalizeRoomId(roomId) {
+  if (typeof roomId !== "string") return null;
+
+  const room = roomId.trim().toUpperCase();
+  return /^[A-Z0-9]{6,12}$/.test(room) ? room : null;
+}
+
 io.on("connection", (socket) => {
-  socket.on("join-device", ({ roomId }) => {
-    if (typeof roomId !== "string") return;
-
-    const room = roomId.trim().toUpperCase().slice(0, 12);
+  socket.on("join-device", (payload) => {
+    const room = normalizeRoomId(payload?.roomId);
     if (!room) return;
-
     socket.join(room);
     socket.emit("joined", { roomId: room });
   });
 
-  socket.on("voice-text", ({ roomId, text, final }) => {
-    if (typeof roomId !== "string" || typeof text !== "string") return;
-
-    const room = roomId.trim().toUpperCase().slice(0, 12);
-    if (!room) return;
-
+  socket.on("voice-text", (payload) => {
+    const room = normalizeRoomId(payload?.roomId);
+    if (!room || typeof payload.text !== "string" || !socket.rooms.has(room)) return;
     io.to(room).emit("text-update", {
-      text: text.slice(0, 5000),
-      final: Boolean(final)
+      text: payload.text.slice(0, 5000),
+      final: Boolean(payload.final)
     });
   });
 
-  socket.on("clear-text", ({ roomId }) => {
-    if (typeof roomId !== "string") return;
-
-    const room = roomId.trim().toUpperCase().slice(0, 12);
-    if (!room) return;
-
+  socket.on("clear-text", (payload) => {
+    const room = normalizeRoomId(payload?.roomId);
+    if (!room || !socket.rooms.has(room)) return;
     io.to(room).emit("text-cleared");
   });
 });
 
 const port = Number(process.env.PORT) || 3000;
 httpServer.listen(port, "0.0.0.0", () => {
-  console.log(`Mobile 2 PC Typing is running at http://localhost:${port}`);
+  console.log(`Mobile 2 PC Typing is listening on port ${port}`);
 });
