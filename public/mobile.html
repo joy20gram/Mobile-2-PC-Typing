@@ -191,6 +191,11 @@
         status.textContent = "Tap the microphone on your phone keyboard to dictate, then tap Send.";
         return;
       }
+      if (!window.isSecureContext) {
+        textInput.focus();
+        status.textContent = "For same-Wi-Fi HTTP, use the phone keyboard mic. The built-in mic requires the trusted HTTPS link.";
+        return;
+      }
       if (listening) {
         recognition.stop();
         return;

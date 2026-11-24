@@ -7,6 +7,7 @@ const { Server } = require("socket.io");
 const QRCode = require("qrcode");
 
 const app = express();
+const port = Number(process.env.PORT) || 3000;
 app.use(express.static(path.join(__dirname, "public")));
 
 app.get("/health", (_request, response) => {
@@ -23,6 +24,8 @@ app.get("/api/pairing-qr", async (request, response, next) => {
 
   try {
     const mobileUrl = new URL("/mobile.html", `https://${host}`);
+    mobileUrl.protocol = "http:";
+    mobileUrl.port = String(port);
     mobileUrl.searchParams.set("room", roomId);
     const dataUrl = await QRCode.toDataURL(mobileUrl.toString(), {
       errorCorrectionLevel: "M",
@@ -145,7 +148,6 @@ function registerSocketHandlers(io) {
   });
 }
 
-const port = Number(process.env.PORT) || 3000;
 const httpServer = createServer(hasCertificates ? (request, response) => {
   const parsedUrl = new URL(request.url, `http://${request.headers.host}`);
   if (parsedUrl.pathname === "/ca.crt") {
@@ -157,9 +159,7 @@ const httpServer = createServer(hasCertificates ? (request, response) => {
     return;
   }
 
-  const host = request.headers.host.split(":")[0];
-  response.writeHead(302, { Location: `https://${host}:${httpsPort}${request.url}` });
-  response.end();
+  app(request, response);
 } : app);
 const io = new Server();
 registerSocketHandlers(io);
@@ -174,6 +174,9 @@ if (hasCertificates) {
   httpsServer.listen(httpsPort, "0.0.0.0", () => {
     console.log(`Secure app: https://localhost:${httpsPort}/pc.html`);
   });
+  const httpIo = new Server();
+  registerSocketHandlers(httpIo);
+  httpIo.attach(httpServer);
 } else {
   io.attach(httpServer);
 }
@@ -181,7 +184,8 @@ if (hasCertificates) {
 httpServer.listen(port, "0.0.0.0", () => {
   if (hasCertificates) {
     console.log(`Install the phone certificate from: http://<PC-WIFI-IP>:${port}/ca.crt`);
-    console.log(`HTTP redirects to HTTPS. Keyboard microphone remains available if needed.`);
+    console.log(`No-certificate phone page: http://<PC-WIFI-IP>:${port}/mobile.html`);
+    console.log(`Use HTTPS on the phone for browser mic, or the keyboard mic over HTTP.`);
   } else {
     console.log(`Mobile 2 PC Typing is running at http://localhost:${port}`);
     console.log(`Run npm run setup:https to enable the built-in phone microphone over Wi-Fi.`);
