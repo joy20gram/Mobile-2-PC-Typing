@@ -9,7 +9,7 @@
 <body>
   <main class="card">
     <h1>PC Text Receiver</h1>
-    <p>Open <strong>mobile.html</strong> on your phone and enter this room code.</p>
+    <p>Connect the desktop helper too if you want to type into the active Windows app.</p>
 
     <label for="room">Room code</label>
     <div class="row">
@@ -22,7 +22,7 @@
 
     <div class="row">
       <button id="copy" type="button">Copy</button>
-      <button id="clear" type="button" class="danger">Clear</button>
+      <button id="clear" type="button" class="danger">Clear screen</button>
     </div>
     <p id="status" class="status">Not connected</p>
   </main>
@@ -41,33 +41,54 @@
       const roomId = roomInput.value.trim().toUpperCase();
       if (!roomId) return;
       localStorage.setItem("voice-room", roomId);
-      socket.emit("join-device", { roomId });
+      if (!socket.connected) {
+        status.textContent = "Connecting to server...";
+        return;
+      }
+      socket.emit("join-device", { roomId, role: "pc" }, (result) => {
+        if (!result?.ok) {
+          status.textContent = result?.error || "Could not connect to room";
+          return;
+        }
+        roomInput.value = result.roomId;
+        status.textContent = result.peerCount
+          ? `Connected to room ${result.roomId}`
+          : `Room ${result.roomId} ready — waiting for phone`;
+      });
     }
 
     document.querySelector("#connect").addEventListener("click", connect);
     document.querySelector("#copy").addEventListener("click", async () => {
-      await navigator.clipboard.writeText(output.value);
-      status.textContent = "Text copied";
+      try {
+        await navigator.clipboard.writeText(output.value);
+        status.textContent = "Text copied";
+      } catch {
+        status.textContent = "Copy failed — select and copy the text manually";
+      }
     });
     document.querySelector("#clear").addEventListener("click", () => {
       output.value = "";
-      socket.emit("clear-text", { roomId: roomInput.value.trim().toUpperCase() });
     });
 
-    socket.on("joined", ({ roomId }) => {
-      roomInput.value = roomId;
-      status.textContent = `Connected to room ${roomId}`;
+    socket.on("connect", connect);
+    socket.on("disconnect", () => {
+      status.textContent = "Disconnected — reconnecting...";
     });
-    socket.on("text-update", ({ text }) => {
-      output.value = text;
+    socket.on("connect_error", () => {
+      status.textContent = "Cannot reach the server. Check that the PC server is running.";
+    });
+    socket.on("desktop-typing-state", ({ armed }) => {
+      status.textContent = armed
+        ? "Active Windows app typing is armed."
+        : "Active Windows app typing is disarmed.";
+    });
+    socket.on("text-update", ({ text, final }) => {
+      if (!final) return;
+      const start = output.selectionStart;
+      const end = output.selectionEnd;
+      output.setRangeText(text, start, end, "end");
       status.textContent = "Text received";
     });
-    socket.on("text-cleared", () => {
-      output.value = "";
-      status.textContent = "Text cleared";
-    });
-
-    connect();
   </script>
 </body>
 </html>

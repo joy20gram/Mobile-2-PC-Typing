@@ -13,6 +13,7 @@
 
     <label for="room">PC room code</label>
     <input id="room" maxlength="12" placeholder="Example: 4K7A2B" autocomplete="off">
+    <button id="connect" type="button">Connect to PC</button>
 
     <label for="language">Language</label>
     <select id="language">
@@ -35,6 +36,7 @@
   <script>
     const socket = io();
     const roomInput = document.querySelector("#room");
+    const connectButton = document.querySelector("#connect");
     const languageInput = document.querySelector("#language");
     const textInput = document.querySelector("#text");
     const listenButton = document.querySelector("#listen");
@@ -47,6 +49,7 @@
     let recognition;
     let listening = false;
     let recognitionError = "";
+    let finalTranscript = "";
 
     if (SpeechRecognition) {
       recognition = new SpeechRecognition();
@@ -61,7 +64,12 @@
       recognition.onend = () => {
         listening = false;
         listenButton.textContent = "🎙 Start speaking";
-        if (!recognitionError) status.textContent = "Stopped listening";
+        if (recognitionError) return;
+        if (finalTranscript.trim()) {
+          sendText(true, finalTranscript);
+        } else {
+          status.textContent = "No final speech was recognized. Try again or use the keyboard mic.";
+        }
       };
       recognition.onerror = (event) => {
         const messages = {
@@ -79,37 +87,88 @@
       };
       recognition.onresult = (event) => {
         recognitionError = "";
-        let result = "";
-        for (let i = 0; i < event.results.length; i++) {
-          result += event.results[i][0].transcript;
+        let interimTranscript = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
         }
-        textInput.value = result;
-        sendText(false);
+        textInput.value = finalTranscript + interimTranscript;
       };
     } else {
       status.textContent = "Voice recognition is unavailable here. Use your phone keyboard's microphone.";
     }
 
-    function connect() {
+    function connect(onConnected = () => {}) {
       const roomId = roomInput.value.trim().toUpperCase();
-      if (!roomId) return;
+      if (!roomId) {
+        status.textContent = "Enter the room code shown on the PC first.";
+        onConnected(false);
+        return;
+      }
+      if (!socket.connected) {
+        status.textContent = "Connecting to server...";
+        onConnected(false);
+        return;
+      }
       localStorage.setItem("voice-room", roomId);
-      socket.emit("join-device", { roomId });
-      status.textContent = `Connected to room ${roomId}`;
+      socket.emit("join-device", { roomId, role: "mobile" }, (result) => {
+        if (!result?.ok) {
+          status.textContent = result?.error || "Could not connect to the PC room.";
+          onConnected(false);
+          return;
+        }
+        if (!result.peerCount) {
+          status.textContent = `Room ${result.roomId} joined, but the PC receiver is not connected yet.`;
+          onConnected(false);
+          return;
+        }
+        status.textContent = `Connected to PC room ${result.roomId}`;
+        onConnected(true);
+      });
     }
 
-    function sendText(final = true) {
+    function sendText(final = true, text = textInput.value) {
       const roomId = roomInput.value.trim().toUpperCase();
       if (!roomId) {
         status.textContent = "Enter the PC room code first";
         return;
       }
-      socket.emit("join-device", { roomId });
-      socket.emit("voice-text", { roomId, text: textInput.value, final });
-      if (final) status.textContent = "Text sent";
+      if (!socket.connected) {
+        status.textContent = "Disconnected from server. Reconnecting...";
+        return;
+      }
+      if (!text.trim()) {
+        status.textContent = "There is no text to send.";
+        return;
+      }
+      socket.timeout(5000).emit("voice-text", { roomId, text, final }, (error, result) => {
+        if (error || !result?.ok) {
+          status.textContent = result?.error || "Send failed. Check the PC connection and try again.";
+          return;
+        }
+        if (final) {
+          textInput.value = "";
+          finalTranscript = "";
+          status.textContent = "Sent to PC — ready for the next phrase.";
+        }
+      });
     }
 
-    roomInput.addEventListener("change", connect);
+    connectButton.addEventListener("click", () => connect());
+    roomInput.addEventListener("change", () => connect());
+    socket.on("connect", () => {
+      if (roomInput.value.trim()) connect();
+      else status.textContent = "Server connected — enter the PC room code.";
+    });
+    socket.on("disconnect", () => {
+      status.textContent = "Disconnected from server. Reconnecting...";
+    });
+    socket.on("connect_error", () => {
+      status.textContent = "Cannot reach the PC server. Check Wi-Fi and the HTTPS link.";
+    });
     languageInput.addEventListener("change", () => {
       if (recognition) recognition.lang = languageInput.value;
     });
@@ -124,20 +183,32 @@
         status.textContent = "Tap the microphone on your phone keyboard to dictate, then tap Send.";
         return;
       }
-      connect();
-      recognition.lang = languageInput.value;
-      recognitionError = "";
-      try {
-        if (listening) recognition.stop();
-        else recognition.start();
-      } catch (error) {
-        status.textContent = error.name === "NotAllowedError"
-          ? "Microphone blocked. Allow microphone access for this browser, then reload."
-          : `Could not start voice recognition: ${error.message}`;
+      if (listening) {
+        recognition.stop();
+        return;
       }
+      connect((connected) => {
+        if (!connected) return;
+        recognition.lang = languageInput.value;
+        recognitionError = "";
+        finalTranscript = textInput.value;
+        try {
+          recognition.start();
+        } catch (error) {
+          status.textContent = error.name === "NotAllowedError"
+            ? "Microphone blocked. Allow microphone access for this site, then reload."
+            : `Could not start voice recognition: ${error.message}`;
+        }
+      });
     });
 
-    document.querySelector("#send").addEventListener("click", () => sendText(true));
+    document.querySelector("#send").addEventListener("click", () => {
+      if (listening && recognition) {
+        recognition.stop();
+        return;
+      }
+      sendText(true);
+    });
     keyboardMicButton.addEventListener("click", () => {
       textInput.focus();
       status.textContent = "Tap the microphone on your phone keyboard to dictate, then tap Send.";

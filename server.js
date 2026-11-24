@@ -27,26 +27,96 @@ function normalizeRoomId(roomId) {
 
 function registerSocketHandlers(io) {
   io.on("connection", (socket) => {
-    socket.on("join-device", (payload) => {
+    socket.on("join-device", async (payload, acknowledge) => {
       const room = normalizeRoomId(payload?.roomId);
-      if (!room) return;
-      socket.join(room);
-      socket.emit("joined", { roomId: room });
-    });
+      const role = payload?.role;
+      if (!room || !["pc", "mobile", "desktop"].includes(role)) {
+        acknowledge?.({ ok: false, error: "Enter a valid room code." });
+        return;
+      }
 
-    socket.on("voice-text", (payload) => {
-      const room = normalizeRoomId(payload?.roomId);
-      if (!room || typeof payload.text !== "string" || !socket.rooms.has(room)) return;
-      io.to(room).emit("text-update", {
-        text: payload.text.slice(0, 5000),
-        final: Boolean(payload.final)
+      const previousRoom = socket.data.roomId;
+      if (previousRoom && previousRoom !== room) {
+        await socket.leave(previousRoom);
+      }
+      await socket.join(room);
+      socket.data.roomId = room;
+      socket.data.role = role;
+      socket.data.armed = false;
+
+      const peers = await io.in(room).fetchSockets();
+      acknowledge?.({
+        ok: true,
+        roomId: room,
+        peerCount: peers.filter((peer) => peer.id !== socket.id).length
       });
     });
 
-    socket.on("clear-text", (payload) => {
+    socket.on("desktop-typing-state", (payload) => {
       const room = normalizeRoomId(payload?.roomId);
-      if (!room || !socket.rooms.has(room)) return;
-      io.to(room).emit("text-cleared");
+      if (
+        !room ||
+        socket.data.roomId !== room ||
+        socket.data.role !== "desktop" ||
+        !socket.rooms.has(room)
+      ) return;
+
+      socket.data.armed = Boolean(payload.armed);
+      io.to(room).except(socket.id).emit("desktop-typing-state", {
+        armed: socket.data.armed
+      });
+    });
+
+    socket.on("voice-text", async (payload, acknowledge) => {
+      const room = normalizeRoomId(payload?.roomId);
+      if (
+        !room ||
+        !payload ||
+        typeof payload.text !== "string" ||
+        !socket.rooms.has(room) ||
+        socket.data.roomId !== room ||
+        socket.data.role !== "mobile"
+      ) {
+        acknowledge?.({ ok: false, error: "Connect to the PC room before sending." });
+        return;
+      }
+
+      const text = payload.text.slice(0, 5000);
+      if (!text.trim()) {
+        acknowledge?.({ ok: false, error: "There is no text to send." });
+        return;
+      }
+
+      const peers = await io.in(room).fetchSockets();
+      const armedDesktopReceivers = peers.filter((peer) =>
+        peer.id !== socket.id &&
+        peer.data.role === "desktop" &&
+        peer.data.armed
+      );
+      const receivers = armedDesktopReceivers.length
+        ? armedDesktopReceivers
+        : peers.filter((peer) =>
+        peer.id !== socket.id && ["pc", "desktop"].includes(peer.data.role)
+      );
+      if (receivers.length === 0) {
+        acknowledge?.({ ok: false, error: "No PC receiver is connected to this room." });
+        return;
+      }
+
+      io.to(receivers.map((receiver) => receiver.id)).emit("text-update", {
+        text,
+        final: Boolean(payload.final)
+      });
+      acknowledge?.({ ok: true, receiverCount: receivers.length });
+    });
+
+    socket.on("disconnect", () => {
+      if (socket.data.role === "desktop" && socket.data.roomId) {
+        io.to(socket.data.roomId).emit("desktop-typing-state", { armed: false });
+      }
+      socket.data.roomId = null;
+      socket.data.role = null;
+      socket.data.armed = false;
     });
   });
 }
