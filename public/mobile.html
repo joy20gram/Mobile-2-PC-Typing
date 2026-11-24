@@ -25,6 +25,7 @@
 
     <div class="row">
       <button id="listen" type="button" class="primary">🎙 Start speaking</button>
+      <button id="keyboard-mic" type="button">Use keyboard mic</button>
       <button id="send" type="button">Send</button>
     </div>
     <p id="status" class="status">Enter the PC room code</p>
@@ -37,6 +38,7 @@
     const languageInput = document.querySelector("#language");
     const textInput = document.querySelector("#text");
     const listenButton = document.querySelector("#listen");
+    const keyboardMicButton = document.querySelector("#keyboard-mic");
     const status = document.querySelector("#status");
 
     roomInput.value = localStorage.getItem("voice-room") || "";
@@ -136,6 +138,10 @@
     });
 
     document.querySelector("#send").addEventListener("click", () => sendText(true));
+    keyboardMicButton.addEventListener("click", () => {
+      textInput.focus();
+      status.textContent = "Tap the microphone on your phone keyboard to dictate, then tap Send.";
+    });
     if (recognition) recognition.lang = languageInput.value;
   </script>
 </body>

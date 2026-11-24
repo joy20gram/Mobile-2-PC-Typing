@@ -5,12 +5,15 @@ Speak in Bangla or English on a mobile phone and send the text to a desktop brow
 ## Run locally (same Wi-Fi)
 
 1. Install Node.js from https://nodejs.org/
-2. Open this folder in a terminal.
-3. Run `npm install`, then `npm start`. Keep the terminal open while using the app.
-4. On the PC, open `http://localhost:3000/pc.html`.
-5. Find the PC's Wi-Fi IPv4 address with `ipconfig` (look under **Wireless LAN adapter Wi-Fi**, usually `192.168.x.x`).
-6. Connect the phone to the same Wi-Fi network and open `http://<PC-Wi-Fi-IP>:3000/mobile.html`. For example: `http://192.168.1.101:3000/mobile.html`.
+2. Install mkcert by running `winget install FiloSottile.mkcert` in PowerShell.
+3. Open this folder in a terminal and run `npm install`.
+4. Run `npm run setup:https`. This creates a private certificate on this PC for its current Wi-Fi IP. Keep the generated `certs` folder private; it is ignored by Git.
+5. On your phone, open `http://<PC-Wi-Fi-IP>:3000/ca.crt` (for example `http://192.168.1.101:3000/ca.crt`) to download the local certificate.
+6. On Android, install it as a **CA certificate** in **Settings → Security & privacy → More security settings → Encryption & credentials → Install a certificate → CA certificate**. Android menu names vary by phone. Only install this certificate on your own phone; it lets that phone trust HTTPS sites signed by this PC's local development certificate.
+7. Restart the server with `npm start`. Open `https://<PC-Wi-Fi-IP>:3443/pc.html` on the PC and `https://<PC-Wi-Fi-IP>:3443/mobile.html` on the phone. Allow microphone access when Chrome asks.
+
+The phone and PC must be on the same Wi-Fi. If the PC's Wi-Fi IP changes, run `npm run setup:https` again and download/install the renewed certificate.
 
 ## Limitations
 
-If the page cannot be reached, confirm both devices are on the same non-guest Wi-Fi network and that the PC server is still running. Some routers block communication between Wi-Fi devices (AP/client isolation); turn that setting off in the router. Chrome may block the page's built-in microphone on the local `http://` address. For local same-Wi-Fi use, tap the text box and use the microphone on the phone keyboard, then tap **Send**. The built-in page microphone requires HTTPS. This MVP sends text to a browser page; it does not automatically control or paste text into every Windows application. Treat the room code like a private password; anyone who knows it can join that room.
+If the built-in microphone is blocked, tap **Use keyboard mic**, speak using your phone keyboard's microphone, then tap **Send**. Browser speech recognition may send audio to the browser provider for processing. This MVP sends text to a browser page; it does not automatically control or paste text into every Windows application. Treat the room code like a private password; anyone who knows it can join that room.
