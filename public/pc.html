@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PC Voice Text Receiver</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="card">
+    <h1>PC Text Receiver</h1>
+    <p>Open <strong>mobile.html</strong> on your phone and enter this room code.</p>
+
+    <label for="room">Room code</label>
+    <div class="row">
+      <input id="room" maxlength="12" placeholder="Generating..." autocomplete="off">
+      <button id="connect" type="button">Connect</button>
+    </div>
+
+    <label for="output">Received text</label>
+    <textarea id="output" rows="14" aria-label="Received text"></textarea>
+
+    <div class="row">
+      <button id="copy" type="button">Copy</button>
+      <button id="clear" type="button" class="danger">Clear</button>
+    </div>
+    <p id="status" class="status">Not connected</p>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const roomInput = document.querySelector("#room");
+    const output = document.querySelector("#output");
+    const status = document.querySelector("#status");
+
+    const savedRoom = localStorage.getItem("voice-room");
+    roomInput.value = savedRoom || Math.random().toString(36).slice(2, 8).toUpperCase();
+
+    function connect() {
+      const roomId = roomInput.value.trim().toUpperCase();
+      if (!roomId) return;
+      localStorage.setItem("voice-room", roomId);
+      socket.emit("join-device", { roomId });
+    }
+
+    document.querySelector("#connect").addEventListener("click", connect);
+    document.querySelector("#copy").addEventListener("click", async () => {
+      await navigator.clipboard.writeText(output.value);
+      status.textContent = "Text copied";
+    });
+    document.querySelector("#clear").addEventListener("click", () => {
+      output.value = "";
+      socket.emit("clear-text", { roomId: roomInput.value.trim().toUpperCase() });
+    });
+
+    socket.on("joined", ({ roomId }) => {
+      roomInput.value = roomId;
+      status.textContent = `Connected to room ${roomId}`;
+    });
+    socket.on("text-update", ({ text }) => {
+      output.value = text;
+      status.textContent = "Text received";
+    });
+    socket.on("text-cleared", () => {
+      output.value = "";
+      status.textContent = "Text cleared";
+    });
+
+    connect();
+  </script>
+</body>
+</html>

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f766e">
+  <title>Mobile Voice Typing</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="card">
+    <h1>Mobile Voice Typing</h1>
+
+    <label for="room">PC room code</label>
+    <input id="room" maxlength="12" placeholder="Example: 4K7A2B" autocomplete="off">
+
+    <label for="language">Language</label>
+    <select id="language">
+      <option value="bn-BD">বাংলা (Bangla)</option>
+      <option value="en-US">English</option>
+    </select>
+
+    <label for="text">Spoken text</label>
+    <textarea id="text" rows="8" aria-label="Spoken text"></textarea>
+
+    <div class="row">
+      <button id="listen" type="button" class="primary">🎙 Start speaking</button>
+      <button id="send" type="button">Send</button>
+    </div>
+    <p id="status" class="status">Enter the PC room code</p>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const roomInput = document.querySelector("#room");
+    const languageInput = document.querySelector("#language");
+    const textInput = document.querySelector("#text");
+    const listenButton = document.querySelector("#listen");
+    const status = document.querySelector("#status");
+
+    roomInput.value = localStorage.getItem("voice-room") || "";
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition;
+    let listening = false;
+
+    if (SpeechRecognition) {
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      recognition.onstart = () => {
+        listening = true;
+        listenButton.textContent = "⏹ Stop speaking";
+        status.textContent = "Listening...";
+      };
+      recognition.onend = () => {
+        listening = false;
+        listenButton.textContent = "🎙 Start speaking";
+        status.textContent = "Stopped listening";
+      };
+      recognition.onerror = (event) => {
+        status.textContent = `Voice error: ${event.error}`;
+      };
+      recognition.onresult = (event) => {
+        let result = "";
+        for (let i = 0; i < event.results.length; i++) {
+          result += event.results[i][0].transcript;
+        }
+        textInput.value = result;
+        sendText(false);
+      };
+    } else {
+      listenButton.disabled = true;
+      status.textContent = "Use Chrome or Edge for voice typing";
+    }
+
+    function connect() {
+      const roomId = roomInput.value.trim().toUpperCase();
+      if (!roomId) return;
+      localStorage.setItem("voice-room", roomId);
+      socket.emit("join-device", { roomId });
+      status.textContent = `Connected to room ${roomId}`;
+    }
+
+    function sendText(final = true) {
+      const roomId = roomInput.value.trim().toUpperCase();
+      if (!roomId) {
+        status.textContent = "Enter the PC room code first";
+        return;
+      }
+      socket.emit("join-device", { roomId });
+      socket.emit("voice-text", { roomId, text: textInput.value, final });
+      if (final) status.textContent = "Text sent";
+    }
+
+    roomInput.addEventListener("change", connect);
+    languageInput.addEventListener("change", () => {
+      if (recognition) recognition.lang = languageInput.value;
+    });
+
+    listenButton.addEventListener("click", () => {
+      if (!roomInput.value.trim()) {
+        status.textContent = "Enter the PC room code first";
+        return;
+      }
+      connect();
+      recognition.lang = languageInput.value;
+      if (listening) recognition.stop();
+      else recognition.start();
+    });
+
+    document.querySelector("#send").addEventListener("click", () => sendText(true));
+    if (recognition) recognition.lang = languageInput.value;
+  </script>
+</body>
+</html>

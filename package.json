@@ -1,0 +1,15 @@
+{
+  "name": "mobile-2-pc-typing",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Type into a PC from a mobile phone using Bangla or English voice input",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1"
+  }
+}
