@@ -43,7 +43,11 @@
     const keyboardMicButton = document.querySelector("#keyboard-mic");
     const status = document.querySelector("#status");
 
-    roomInput.value = localStorage.getItem("voice-room") || "";
+    const roomFromUrl = new URLSearchParams(window.location.search).get("room");
+    roomInput.value = (roomFromUrl || localStorage.getItem("voice-room") || "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .slice(0, 12);
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition;
@@ -102,9 +106,10 @@
     }
 
     function connect(onConnected = () => {}) {
-      const roomId = roomInput.value.trim().toUpperCase();
-      if (!roomId) {
-        status.textContent = "Enter the room code shown on the PC first.";
+      const roomId = roomInput.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
+      roomInput.value = roomId;
+      if (!/^[A-Z0-9]{6,12}$/.test(roomId)) {
+        status.textContent = "Enter the 6–12 letter/number room code shown on the PC.";
         onConnected(false);
         return;
       }
@@ -158,6 +163,9 @@
     }
 
     connectButton.addEventListener("click", () => connect());
+    roomInput.addEventListener("input", () => {
+      roomInput.value = roomInput.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
+    });
     roomInput.addEventListener("change", () => connect());
     socket.on("connect", () => {
       if (roomInput.value.trim()) connect();

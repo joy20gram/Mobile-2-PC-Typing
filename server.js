@@ -4,12 +4,36 @@ const express = require("express");
 const { createServer } = require("http");
 const { createServer: createHttpsServer } = require("https");
 const { Server } = require("socket.io");
+const QRCode = require("qrcode");
 
 const app = express();
 app.use(express.static(path.join(__dirname, "public")));
 
 app.get("/health", (_request, response) => {
   response.status(200).send("ok");
+});
+
+app.get("/api/pairing-qr", async (request, response, next) => {
+  const roomId = normalizeRoomId(request.query.room);
+  const host = request.get("host") || "";
+  if (!roomId || !/^[a-z0-9.-]+(?::\d{1,5})?$/i.test(host)) {
+    response.status(400).json({ error: "Invalid room code or host." });
+    return;
+  }
+
+  try {
+    const mobileUrl = new URL("/mobile.html", `https://${host}`);
+    mobileUrl.searchParams.set("room", roomId);
+    const dataUrl = await QRCode.toDataURL(mobileUrl.toString(), {
+      errorCorrectionLevel: "M",
+      margin: 2,
+      width: 240
+    });
+    response.set("Cache-Control", "no-store");
+    response.json({ dataUrl, mobileUrl: mobileUrl.toString() });
+  } catch (error) {
+    next(error);
+  }
 });
 
 const certDir = path.join(__dirname, "certs");

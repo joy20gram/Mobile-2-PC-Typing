@@ -16,6 +16,10 @@
       <input id="room" maxlength="12" placeholder="Generating..." autocomplete="off">
       <button id="connect" type="button">Connect</button>
     </div>
+    <section class="pairing" aria-label="Connect a phone by QR code">
+      <img id="pairing-qr" alt="Scan to open the mobile app with this room code">
+      <p id="pairing-link">Scan this QR with your phone camera to connect automatically.</p>
+    </section>
 
     <label for="output">Received text</label>
     <textarea id="output" rows="14" aria-label="Received text"></textarea>
@@ -33,14 +37,38 @@
     const roomInput = document.querySelector("#room");
     const output = document.querySelector("#output");
     const status = document.querySelector("#status");
+    const pairingQr = document.querySelector("#pairing-qr");
+    const pairingLink = document.querySelector("#pairing-link");
 
-    const savedRoom = localStorage.getItem("voice-room");
+    const roomFromUrl = new URLSearchParams(window.location.search).get("room");
+    const savedRoom = roomFromUrl || localStorage.getItem("voice-room");
     roomInput.value = savedRoom || Array.from(crypto.getRandomValues(new Uint8Array(12)), value => "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[value % 36]).join("");
 
+    function normalizeRoomInput() {
+      roomInput.value = roomInput.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
+      return roomInput.value;
+    }
+
+    async function updatePairingQr(roomId) {
+      try {
+        const response = await fetch(`/api/pairing-qr?room=${encodeURIComponent(roomId)}`);
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "QR code generation failed");
+        pairingQr.src = result.dataUrl;
+        pairingLink.textContent = result.mobileUrl;
+      } catch {
+        pairingLink.textContent = "Could not create QR code. Check the room code and refresh.";
+      }
+    }
+
     function connect() {
-      const roomId = roomInput.value.trim().toUpperCase();
-      if (!roomId) return;
+      const roomId = normalizeRoomInput();
+      if (!/^[A-Z0-9]{6,12}$/.test(roomId)) {
+        status.textContent = "Room code must be 6–12 letters or numbers.";
+        return;
+      }
       localStorage.setItem("voice-room", roomId);
+      updatePairingQr(roomId);
       if (!socket.connected) {
         status.textContent = "Connecting to server...";
         return;
@@ -58,6 +86,7 @@
     }
 
     document.querySelector("#connect").addEventListener("click", connect);
+    roomInput.addEventListener("input", normalizeRoomInput);
     document.querySelector("#copy").addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText(output.value);
